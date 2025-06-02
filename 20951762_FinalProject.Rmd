@@ -1,0 +1,331 @@
+---
+title: "DASC3240 Final Project"
+author: "Chan Wing Yi Whitney"
+date: "2025-05-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Description of the dataset
+
+URL: <https://archive.ics.uci.edu/dataset/320/student+performance>
+
+The original paper: P. Cortez, A. M. G. Silva. Using data mining to predict secondary school student performance. In Proceedings of 5th Annual Future Business Technology Conference, 2008. <https://www.semanticscholar.org/paper/Using-data-mining-to-predict-secondary-school-Cortez-Silva/61d468d5254730bbecf822c6b60d7d6595d9889c>
+
+## Background
+
+```         
+The "Student Performance Dataset" from the UCI Machine Learning Repository tracks secondary school student achievement in Mathematics (395 instances) and Portuguese (649 instances) at two Portuguese schools during 2005-2006. It aims to predict final grades (G3) and analyze factors like demographics, family background, and lifestyle. Each dataset has 33 variables: 30 input features (e.g., `age`, `Mjob`(Mother job), `Fjob`(Father job), `studytime`, `absences`) and 3 grades (G1, G2, G3). Variables are numeric (e.g., grades: 0-20) or categorical (e.g., `Mjob`: "teacher", "at_home"). Data was collected via school reports for grades and absences, and student questionnaires for personal and social attributes, anonymized for privacy. The dataset, used in a 2008 study by Cortez and Silva, supports classification and regression tasks, with G3 strongly correlated to G1 and G2. 
+```
+
+## License
+
+```         
+The dataset is licensed under Creative Commons Attribution 4.0 International (CC BY 4.0) by the UCI Machine Learning Repository. It allows any individual or entity sharing and adaptation for any purpose, provided proper citation is given to the repository and original donor.
+```
+
+# 2. Exploratory data visualization
+
+## Preparation
+
+```{r}
+# Load tidyverse
+library(tidyverse); packageVersion("tidyverse") # 2.0.0
+```
+
+```{r}
+library(patchwork); packageVersion("patchwork") # 1.3.0
+```
+
+```{r}
+# Loada the data
+d1 <- read.csv("student-mat.csv", sep = ";")
+d2 <- read.csv("student-por.csv", sep = ";")
+
+# Check data
+head(d1)
+head(d2)
+```
+
+## Scatter plot
+
+```{r}
+# Load required libraries
+library(plotly)
+library(ggplot2)
+library(GGally)
+```
+
+```{r}
+# Customize ggpairs plot
+g1 <- ggpairs(
+  data = d1,
+  mapping = aes(color = reason),
+  # Customize plot elements:
+  upper = list(continuous = wrap("cor", size = 3)),  # Smaller correlation text
+  lower = list(continuous = wrap("points", alpha = 0.5, size = 0.5)),  # Smaller points
+  diag = list(continuous = wrap("densityDiag", alpha = 0.5))
+) + 
+  theme_bw(base_size = 8)  # Smaller base font size for all text
+
+g2 <- ggpairs(
+  data = d2,
+  mapping = aes(color = reason),
+  upper = list(continuous = wrap("cor", size = 3)),
+  lower = list(continuous = wrap("points", alpha = 0.5, size = 0.5)),
+  diag = list(continuous = wrap("densityDiag", alpha = 0.5))
+) + 
+  theme_bw(base_size = 8)
+
+ggsave("g1.png", plot = g1, width = 16, height = 12, units = "in", dpi = 300) # save in png for more readability 
+ggsave("g2.png", plot = g2, width = 16, height = 12, units = "in", dpi = 300) # save in png for more readability 
+```
+
+```{r,fig.width=16, fig.height=14, out.width="100%", fig.cap="Figure 1 | Scatter plots, density plots, and boxplots for Mathiemtics to identify potentially interesting pattern."}
+g1
+```
+
+```{r,fig.width=16, fig.height=14, out.width="100%", fig.cap=" Figure 2 | Scatter plots, density plots, and boxplots for Portuguese to identify potentially interesting pattern."}
+g2
+```
+
+## Boxplots + sine plot
+
+```{r}
+#Load library
+library(ggforce); packageVersion("ggforce")
+library(gridExtra)
+library(dplyr)
+library(reshape2)
+```
+
+```{r}
+# For math dataset
+# Reshape the data from wide to long format using melt()
+data <- melt(d1, id.vars = "G3", variable.name = "Variable", value.name = "Value")
+# Create the plot
+b1 <- ggplot(data, aes(x = as.factor(Value), y = G3)) + geom_boxplot() + geom_sina() + 
+  facet_wrap(~ Variable, scales = "free_x", ncol = 5) + labs(title= "Factor affect Mathemtics Result", x = "Value", y = "G3") + 
+  theme(axis.text.x = element_text(hjust = 1))
+```
+
+```{r,fig.width=16, fig.height=13, out.width="100%", fig.cap="Figure 3 | Boxplots + sinaplots for Mathematics to visualize the relationship between the G3 score and other factors."}
+b1
+```
+
+```{r}
+# For portuguese dataset
+# Reshape the data from wide to long format using melt()
+data <- melt(d2, id.vars = "G3", variable.name = "Variable", value.name = "Value")
+# Create the plot
+b2 <- ggplot(data, aes(x = as.factor(Value), y = G3)) + geom_boxplot() + geom_sina() + 
+  facet_wrap(~ Variable, scales = "free_x", ncol = 5) + labs(title= "Factor affect Portuguese Result", x = "Value", y = "G3") + 
+  theme(axis.text.x = element_text(hjust = 1))
+```
+
+```{r,fig.width=16, fig.height=13, out.width="100%", fig.cap="Figure 4 | Boxplots + sinaplots for Portuguese to visualize the relationship between the G3 score and other factors."}
+b2
+```
+
+## Dimension reduction
+
+```{r}
+# Load the library
+library(factoextra)
+```
+
+```{r}
+# Prepare data (convert categorical variables to numeric)
+d1_numeric <- d1 %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(across(where(is.factor), as.numeric))  # Simple numeric encoding
+
+d2_numeric <- d2 %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(across(where(is.factor), as.numeric))  
+
+# Perform PCA (exclude G3 from computation but keep for coloring)
+pca_res1 <- d1_numeric %>% select(-G3) %>% prcomp(center = TRUE, scale = TRUE)
+pca_res2 <- d2_numeric %>% select(-G3) %>% prcomp(center = TRUE, scale = TRUE)
+
+# Create PCA dataframes with G3 values
+pca_df1 <- as.data.frame(pca_res1$x[, 1:2]) %>% mutate(G3 = d1$G3, Dataset = "Mathematics")
+pca_df2 <- as.data.frame(pca_res2$x[, 1:2]) %>% mutate(G3 = d2$G3, Dataset = "Portuguese")
+
+# Scatterplot of PC1 vs PC2 (colored by G3) for Mathemics
+p1 <- ggplot(pca_df1, aes(x = PC1, y = PC2, color = G3)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Mathemics: PCA Plot with G3 final grade",
+       x = paste0("PC1 (", round(summary(pca_res1)$importance[2,1]*100, 1), "% Variance)"),
+       y = paste0("PC2 (", round(summary(pca_res1)$importance[2,2]*100, 1), "% Variance)"),
+       color = "G3(final grade)") 
+
+# Scatterplot of PC1 vs PC2 (colored by G3) for Portuguese
+p2 <- ggplot(pca_df2, aes(x = PC1, y = PC2, color = G3)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Portuguese: PCA Plot with G3 final grade",
+       x = paste0("PC1 (", round(summary(pca_res2)$importance[2,1]*100, 1), "% Variance)"),
+       y = paste0("PC2 (", round(summary(pca_res2)$importance[2,2]*100, 1), "% Variance)"),
+       color = "G3(final grade)") 
+```
+
+```{r,fig.width=16, fig.height=6, out.width="100%", fig.cap="Figure 5| PCA plot for the G3 score of Mathemtics and Portuguses."}
+p1 + p2
+```
+
+## Analyzing Mathematics and Portuguese performance
+
+```{r, fig.cap="Figure 6| Combine PCA plot for the G3 score of Mathematics and Portuguese."}
+# Combine PCA dataframes
+combined_pca <- bind_rows(pca_df1 %>% mutate(Dataset = "Mathematics"),pca_df2 %>% mutate(Dataset = "Portuguese")) %>%
+  mutate(G3 = as.numeric(G3),
+         LegendLabel = ifelse(Dataset == "Mathematics", 
+                            paste("Math G3 =", G3), 
+                            paste("Port G3 =", G3)))
+
+# Define color gradients
+math_colors <- colorRampPalette(c("red", "green"))(21)
+port_colors <- colorRampPalette(c("blue", "purple"))(21)
+color_values <- c(
+  setNames(math_colors, paste("Math G3 =", 0:20)),
+  setNames(port_colors, paste("Port G3 =", 0:20))
+  )
+
+# Create the plot
+ggplot(combined_pca, aes(x = PC1, y = PC2, color = LegendLabel, shape = Dataset)) +
+  geom_point(alpha = 0.7, size = 3) +
+  scale_shape_manual(values = c("Mathematics" = 16, "Portuguese" = 17), name = "G3 score") +
+  scale_color_manual(values = color_values, name = "G3 score") +
+  labs(title = "Combine PCA", x = "PC1",y = "PC2") +
+  theme(
+    legend.key.size = unit(0.3, "cm"),
+    legend.text = element_text(size = 6),
+    legend.title = element_text(size = 8),
+    legend.spacing.y = unit(0.1, "cm")
+  )
+```
+
+## For explanatory data visualization
+
+Explain which variables or patterns you will focus on in the explanatory data visualization
+
+```         
+My explanatory data visualization suggests that several factors among the 32 variables strongly affect G3(final grade). In the PCA analysis, I found that PCA not that useful on identifying pattern, the result is too diverse, this may because the dataset is more on category rather than interger. From the boxplot and sineplot, I find that "Mjob"(Mother job) and "Fjob"(Father job) these two variable have interesting pattern with the dataset Therefore, I will focus on visualizing these two variables in the explanatory data visualization. 
+```
+
+# 3. Explanatory data visualization
+
+## Static figures
+
+```{r, fig.width=16, fig.height=7, out.width="100%", fig.cap="Figure7 | Explanatory data visualization for the relationship among the G3, mother's job, and father's job between Mathemtics and Portuguses Subject"}
+# Reshape data to long format for plotting Mjob and Fjob together
+d1_long <- d1 %>%
+  select(Mjob, Fjob, G3) %>%
+  pivot_longer(cols = c(Mjob, Fjob), names_to = "Parent", values_to = "Job")
+d2_long <- d2 %>%
+  select(Mjob, Fjob, G3) %>%
+  pivot_longer(cols = c(Mjob, Fjob), names_to = "Parent", values_to = "Job")
+
+# Create violin plot
+s1 <- ggplot(d1_long, aes(x = Job, y = G3, fill = Parent)) +
+  geom_violin(alpha = 0.7) +
+  geom_boxplot(aes(group = interaction(Job, Parent)), 
+               width = 0.1, outlier.shape = NA, alpha = 0.5, 
+               position = position_dodge(width = 0.9), fill = "white") +
+  labs(title = "Violin Plot and Boxplot of Mathemtics G3 by Parent's Job",
+       x = "Parent's Job",
+       y = "Final Grade (G3)") +
+  theme(legend.title = element_text(face = "bold"))
+
+s2 <- ggplot(d2_long, aes(x = Job, y = G3, fill = Parent)) +
+  geom_violin(alpha = 0.7) +
+  geom_boxplot(aes(group = interaction(Job, Parent)), 
+               width = 0.1, outlier.shape = NA, alpha = 0.5, 
+               position = position_dodge(width = 0.9), fill = "white") +
+  labs(title = "Violin Plot and Boxplot of Portuguese Final Grade (G3) by Parent's Job",
+       x = "Parent's Job",
+       y = "Final Grade (G3)") +
+  theme(legend.title = element_text(face = "bold"))
+
+s1 + s2
+```
+
+# 4. Explanatory data visualization using interactive plots or animations
+
+## Creating plotly figures
+
+```{r}
+# Load required packages
+library(dplyr)
+library(plotly)
+```
+
+```{r}
+# Combine datasets and add labels
+data <- bind_rows(
+  d1 %>% mutate(dataset = "Mathematics"),
+  d2 %>% mutate(dataset = "Portuguese")
+)
+
+# Reshape data and create a combined group variable
+data_long <- data %>%
+  select(dataset, Mjob, Fjob, G3) %>%
+  pivot_longer(cols = c(Mjob, Fjob), names_to = "Parent", values_to = "Job") %>%
+  mutate(group = paste(Parent, dataset, sep = "_")) # Create fjob_math, fjob_port, mjob_math, mjob_port
+
+# Calculate median, UQ, and LQ
+stats <- data_long %>%
+  group_by(dataset, Job, Parent, group) %>%
+  summarise(
+    median = median(G3, na.rm = TRUE),
+    UQ = quantile(G3, 0.75, na.rm = TRUE),
+    LQ = quantile(G3, 0.25, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create ggplot
+p <- ggplot(data_long, aes(x = Job, y = G3, fill = group, color = group, shape = group)) +
+  geom_violin(alpha = 0.3, position = position_dodge(0.5)) +
+  geom_point(data = stats, aes(y = median), size = 3, position = position_dodge(0.5)) +
+  geom_point(data = stats, aes(y = UQ), size = 1.5, position = position_dodge(0.5)) +
+  geom_point(data = stats, aes(y = LQ), size = 1.5, position = position_dodge(0.5)) +
+  scale_fill_manual(
+    values = c("Mjob_Mathematics" = "red", "Mjob_Portuguese" = "green", "Fjob_Mathematics" = "blue", "Fjob_Portuguese" = "purple")) +
+  scale_color_manual(
+    values = c("Mjob_Mathematics" = "red", "Mjob_Portuguese" = "green", "Fjob_Mathematics" = "blue", "Fjob_Portuguese" = "purple")) +
+  scale_shape_manual(
+    values = c("Mjob_Mathematics" = 17, "Mjob_Portuguese" = 16, "Fjob_Mathematics" = 17, "Fjob_Portuguese" = 16)) +
+  labs(
+    title = "Sina Plot of Final Grade (G3) by Parent's Job",
+    x = "Parent's Job",
+    y = "Final Grade (G3)"
+    ) +
+  theme_minimal() +
+  theme(legend.position = "right", axis.text.x = element_text(hjust = 1))
+
+# Convert to plotly
+fig <- ggplotly(p, tooltip = c("x", "y", "fill", "shape")) %>%
+  toWebGL() %>%
+  layout(hovermode = "closest", margin = list(b = 100))
+
+```
+
+```{r,fig.width=16, fig.height=8, out.width="100%", fig.cap="Figure 8 | Plotly figure for the relationship amoung the mother job, father job and the final grade(G3) of Math and Portuguese subject. Also UQ, median and LQ is plotted, the point shape represent the job_subject, the largest point is median." }
+# Display plot
+fig
+```
+
+## Explain how the interactive figure improves your visualization compared to the static figures you created
+
+```         
+The interactive figure, built with plotly and toWebGL, enhances the static violin-box plot by adding dynamic features. While the static plot shows parents' jobs (Mjob=pink, Fjob=lightblue) on the x-axis and G3 on the y-axis with violin and box plots, the interactive version allows users to hover over violins to view UQ, LQ, and median values, zoom, and pan for detailed exploration, also watch one data independently or compare all data together. This interactivity improves data accessibility and engagement, making it easier to inspect specific statistics and patterns compared to the static figure's fixed view.
+```
+
+# 5. Discussion
+
+```         
+The plot shows students with father's job as teachers have higher final grade(G3), with violin plots indicating medians 14 for both subject, thicker violin plot at higher grades, and thinner violin plot in lower grade. "at_home" show lower medians (10-11), average lower grade compare with other job. This suggests stable, academic father job may boost performance. But mother's job is teacher grade much lower than father, and mother's job as "health" has highest grade, this indicate that if mother have more health knowledge improve the academic performace of kids.  
+```
